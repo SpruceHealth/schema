@@ -87,7 +87,44 @@ func (d *Decoder) Decode(dst interface{}, src map[string][]string) error {
 	if len(errors) > 0 {
 		return errors
 	}
-	return nil
+	err := d.checkRequiredFieldsAtTopLevel(t, src)
+	return err
+}
+
+// Note that this only checks that the top level fields have been set. If there are structs or a slice of
+// structs involved within the struct, it does not do a deep level check of whether or not the
+// required values within each of the structs have been set.
+func (d *Decoder) checkRequiredFieldsAtTopLevel(t reflect.Type, src map[string][]string) error {
+	var err MissingFieldError
+	// go through each field of the struct
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		// get the field info for this particular type of field within the struct based
+		// on its name or alias
+		alias := fieldAlias(field, d.cache.tag)
+		fi := d.cache.get(t).get(alias)
+		if fi.isRequired {
+			fieldInStructSet := false
+			for key, _ := range src {
+				// break up the key to get the first part before the dot
+				topLevelField := strings.Split(key, ".")[0]
+				if src[topLevelField] != nil && topLevelField == alias {
+					fieldInStructSet = true
+					break
+				}
+			}
+			if fieldInStructSet == false {
+				if err == nil {
+					err = make([]string, 0)
+				}
+				err = append(err, alias)
+			}
+		}
+	}
+	if len(err) == 0 {
+		return nil
+	}
+	return err
 }
 
 // decode fills a struct field using a parsed path.
@@ -269,6 +306,22 @@ func (e ConversionError) Error() string {
 	}
 
 	return output
+}
+
+type MissingFieldError []string
+
+func (e MissingFieldError) Error() string {
+	var eString string
+
+	for i, missingField := range e {
+		eString = eString + missingField
+		if (i + 1) < len(e) {
+			eString = eString + ","
+		}
+	}
+
+	s := "The following parameters are missing: " + eString
+	return s
 }
 
 // MultiError stores multiple decoding errors.

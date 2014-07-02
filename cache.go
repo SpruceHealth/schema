@@ -174,10 +174,11 @@ func (c *cache) createField(field reflect.StructField, info *structInfo) {
 	}
 
 	info.fields = append(info.fields, &fieldInfo{
-		typ:   field.Type,
-		name:  field.Name,
-		ss:    isSlice && isStruct,
-		alias: alias,
+		typ:        field.Type,
+		name:       field.Name,
+		ss:         isSlice && isStruct,
+		alias:      alias,
+		isRequired: isRequiredField(field),
 	})
 }
 
@@ -206,10 +207,11 @@ func (i *structInfo) get(alias string) *fieldInfo {
 }
 
 type fieldInfo struct {
-	typ   reflect.Type
-	name  string // field name in the struct.
-	ss    bool   // true if this is a slice of structs.
-	alias string
+	typ        reflect.Type
+	name       string // field name in the struct.
+	ss         bool   // true if this is a slice of structs.
+	alias      string
+	isRequired bool // true if the field is required to be set from the values passed in
 }
 
 type pathPart struct {
@@ -236,4 +238,16 @@ func fieldAlias(field reflect.StructField, tagName string) string {
 		alias = field.Name
 	}
 	return alias
+}
+
+func isRequiredField(field reflect.StructField) bool {
+	if tag := field.Tag.Get("schema"); tag != "" {
+		if idx := strings.Index(tag, ","); idx != -1 {
+			requiredField := tag[(idx + 1):]
+			if requiredField == "required" {
+				return true
+			}
+		}
+	}
+	return false
 }
